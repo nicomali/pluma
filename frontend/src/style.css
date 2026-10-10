@@ -1,0 +1,71 @@
+:root {
+  --bg: #fcfcfa;
+  --panel: #f4f4f1;
+  --fg: #222;
+  --fg-soft: #555;
+  --muted: #9a9a9a;
+  --line: rgba(0, 0, 0, .07);
+  --accent: #5b6cf0;
+  --hover: rgba(0, 0, 0, .04);
+  --edit-bg: rgba(0, 0, 0, .05);
+  --drop-bg: rgba(252, 252, 250, .85);
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1b1b1d;
+    --panel: #161618;
+    --fg: #ddd;
+    --fg-soft: #aaa;
+    --muted: #666;
+    --line: rgba(255, 255, 255, .07);
+    --accent: #8b97ff;
+    --hover: rgba(255, 255, 255, .05);
+    --edit-bg: rgba(255, 255, 255, .06);
+    --drop-bg: rgba(27, 27, 29, .85);
+  }
+}
+
+/* La escala de fuente se aplica sobre html (font-size en %), y toda la UI usa rem/em. */
+html, body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden; /* el scroll vive dentro de cada editor */
+  background: var(--bg);
+  color: var(--fg);
+  font: 1rem/1.6 system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+code, pre { font-family: ui-monospace, 'Cascadia Code', Consolas, monospace; }
+pre { background: var(--edit-bg); padding: 0.625rem 0.75rem; border-radius: 4px; overflow-x: auto; }
+a { color: var(--accent); }
+
+/* --- Contenido Markdown --- */
+img { max-width: 100%; height: auto; vertical-align: middle; }
+img[align="right"] { margin: 0 0 .5em 1em; }
+img[align="left"] { margin: 0 1em .5em 0; }
+
+table { border-collapse: collapse; width: 100%; font-size: .95em; }
+th, td { padding: .4em .75em; border-bottom: 1px solid var(--line); text-align: left; }
+th { font-weight: 600; border-bottom-color: var(--muted); }
+
+blockquote { margin: 0; padding: .1em 1em; border-left: 3px solid var(--accent); color: var(--fg-soft); }
+blockquote blockquote { border-left-color: var(--line); }
+
+kbd {
+  font: .85em ui-monospace, 'Cascadia Code', Consolas, monospace;
+  padding: .1em .4em;
+  border: 1px solid var(--line);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  background: var(--panel);
+}
+:not(pre) > code { padding: .1em .35em; border-radius: 4px; background: var(--edit-bg); font-size: .9em; }
+mark { background: rgba(250, 204, 21, .35); color: inherit; padding: 0 .15em; border-radius: 2px; }
+hr { border: 0; border-top: 1px solid var(--line); margin: 1.5em 0; }
+
+details { border: 1px solid var(--line); border-radius: 6px; padding: .5em .9em; }
+summary { cursor: pointer; font-weight: 500; }
+details[open] summary { margin-bottom: .4em; }
+
+li:has(> input[type="checkbox"]) { list-style: none; margin-left: -1.3em; }
+input[type="checkbox"] { accent-color: var(--accent); margin-right: .4em; }
