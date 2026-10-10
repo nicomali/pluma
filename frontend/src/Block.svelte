@@ -39,7 +39,10 @@
   let baseline = '';
   let initialHTML = '';
   let savedRange: Range | null = null; // selección del editor visual (para el panel)
-  let switching = false; // cambio de modo en curso: ignorar el focusout del editor que se va
+  // true recién cuando el editor está montado, cargado y con foco. Mientras se abre
+  // (o se cambia de modo) se ignoran los focusout: al reemplazar la vista por el editor,
+  // el navegador saca el foco del elemento que desaparece, y eso NO es "terminé de editar".
+  let ready = false;
 
   // Solo se re-renderiza cuando cambia `text`, no en cada tecla.
   const html = $derived(renderMarkdown(text, baseDir));
@@ -83,16 +86,18 @@
   }
 
   async function enter(mode: Mode, md: string, point?: { x: number; y: number }) {
+    ready = false;
+    // El contenido se carga ANTES de mostrar el editor: así nunca existe un editor
+    // "vacío" que, si se confirmara, borraría el bloque.
+    if (mode === 'raw') draft = md;
+    else baseline = md;
     editing = mode;
     await tick(); // esperar a que el editor exista en el DOM
     if (mode === 'raw') {
-      draft = md;
-      await tick();
       autosize();
       textarea.focus();
       textarea.setSelectionRange(md.length, md.length);
     } else {
-      baseline = md;
       visual.innerHTML = renderMarkdown(md, baseDir);
       initialHTML = visual.innerHTML;
       document.execCommand('defaultParagraphSeparator', false, 'p');
@@ -100,6 +105,7 @@
       placeCaret(point);
       active = activeVisual(visual);
     }
+    ready = true;
   }
 
   /** Cursor donde se hizo clic: el editor visual tiene el mismo HTML en el mismo lugar. */
@@ -122,22 +128,24 @@
   }
 
   function finish() {
-    if (!editing) return;
+    if (!editing || !ready) return; // un editor a medio abrir nunca confirma nada
     const md = currentMarkdown();
     editing = null;
+    ready = false;
     linkOpen = false;
     oncommit(md); // el padre decide si hubo cambios, si dividir o si borrar
   }
 
   function cancel() {
     editing = null;
+    ready = false;
     linkOpen = false;
     oncommit(text); // sin cambios (un bloque nuevo vacío se elimina)
   }
 
   /** El foco salió del bloque (no hacia el panel): se confirma la edición. */
   function onFocusOut(e: FocusEvent) {
-    if (switching || wrapper.contains(e.relatedTarget as Node | null)) return;
+    if (!ready || wrapper.contains(e.relatedTarget as Node | null)) return;
     finish();
   }
 
@@ -146,9 +154,7 @@
     if (!editing || editing === mode) return;
     const md = currentMarkdown();
     if (mode === 'visual' && !isVisualEditable(md)) return;
-    switching = true;
     await enter(mode, md);
-    switching = false;
   }
 
   // ---------------------------------------------------------------- Formato
