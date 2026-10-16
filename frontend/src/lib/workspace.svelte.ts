@@ -6,6 +6,7 @@ import { tick } from 'svelte';
 import { toBlocks, serialize, newBlockId, BLANK_GAP, type BlockData } from './markdown';
 import {
   ReadFile, SaveFile, OpenFilesDialog, SaveFileDialog, ConfirmDiscard, LoadSettings, SaveSettings, SetEditModeMenu,
+  LoadSession, SaveSession,
 } from '../../wailsjs/go/main/App';
 import { main } from '../../wailsjs/go/models';
 
@@ -19,6 +20,14 @@ export type Doc = {
   dirty: boolean;
   focusId: number; // bloque que debe montarse ya en modo edición (bloques nuevos)
 };
+
+/**
+ * Sesión: las pestañas abiertas al cerrar, para recuperarlas al volver a abrir.
+ * Los archivos sin cambios se guardan solo por ruta (se releen del disco); los que
+ * tienen cambios sin guardar y los "Sin título", con su contenido completo.
+ */
+type SessionTab = { path: string; content?: string; dirty?: boolean };
+type Session = { version: 1; tabs: SessionTab[]; active: number };
 
 const MAX_RECENT = 10;
 const ZOOM_STEPS = [0.75, 0.85, 0.9, 1, 1.1, 1.25, 1.4, 1.6, 1.8, 2];
@@ -55,8 +64,13 @@ class Workspace {
   /** blockId del título visible en el editor activo (scroll-spy para la barra lateral). */
   currentHeading = $state(-1);
 
+  /**
+   * true cuando terminó la restauración inicial. Antes de eso no se guarda la sesión:
+   * si no, el primer guardado automático pisaría la sesión anterior con una vacía.
+   */
+  restored = $state(false);
+
   active = $derived(this.docs.find((d) => d.id === this.activeId));
-  dirtyCount = $derived(this.docs.filter((d) => d.dirty).length);
 
   async init(startupFiles: string[]) {
     const s = await LoadSettings();
@@ -64,8 +78,52 @@ class Workspace {
     this.zoom = s.zoom || 1;
     this.sidebarOpen = s.sidebarOpen;
     this.editMode = s.editMode === 'visual' ? 'visual' : 'raw';
-    if (startupFiles.length) await this.openPaths(startupFiles);
+    await this.restoreSession();
+    if (startupFiles.length) await this.openPaths(startupFiles); // se suman a las restauradas
     if (this.docs.length === 0) this.newDoc();
+    this.restored = true;
+  }
+
+  // --- Sesión ---
+
+  /** Foto de la sesión actual (JSON). Las pestañas vacías "Sin título" no se guardan. */
+  sessionSnapshot(): string {
+    const docs = this.docs.filter((d) => !isPristine(d));
+    const tabs: SessionTab[] = docs.map((d) =>
+      d.dirty || !d.path ? { path: d.path, content: serialize(d.blocks), dirty: d.dirty } : { path: d.path },
+    );
+    const active = Math.max(0, docs.findIndex((d) => d.id === this.activeId));
+    return JSON.stringify({ version: 1, tabs, active } satisfies Session);
+  }
+
+  saveSession(): Promise<void> {
+    return SaveSession(this.sessionSnapshot()).catch(() => {});
+  }
+
+  private async restoreSession() {
+    let session: Session;
+    try {
+      const raw = await LoadSession();
+      if (!raw) return;
+      session = JSON.parse(raw);
+    } catch {
+      return; // sesión ilegible: se arranca de cero
+    }
+    for (const tab of session.tabs ?? []) {
+      let blocks: BlockData[];
+      if (typeof tab.content === 'string') {
+        blocks = toBlocks(tab.content); // cambios sin guardar: el contenido viene en la sesión
+      } else {
+        try {
+          blocks = toBlocks(await ReadFile(tab.path));
+        } catch {
+          continue; // el archivo se borró o se movió desde la última vez
+        }
+      }
+      this.docs.push({ id: nextDocId++, path: tab.path ?? '', blocks, dirty: !!tab.dirty, focusId: -1 });
+    }
+    const active = this.docs[session.active] ?? this.docs[0];
+    if (active) this.activeId = active.id;
   }
 
   private persist() {

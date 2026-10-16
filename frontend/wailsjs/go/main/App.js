@@ -10,12 +10,20 @@ export function GetStartupFiles() {
   return window['go']['main']['App']['GetStartupFiles']();
 }
 
+export function LoadSession() {
+  return window['go']['main']['App']['LoadSession']();
+}
+
 export function LoadSettings() {
   return window['go']['main']['App']['LoadSettings']();
 }
 
 export function OpenFilesDialog() {
   return window['go']['main']['App']['OpenFilesDialog']();
+}
+
+export function QuitApp() {
+  return window['go']['main']['App']['QuitApp']();
 }
 
 export function ReadFile(arg1) {
@@ -30,12 +38,12 @@ export function SaveFileDialog() {
   return window['go']['main']['App']['SaveFileDialog']();
 }
 
-export function SaveSettings(arg1) {
-  return window['go']['main']['App']['SaveSettings'](arg1);
+export function SaveSession(arg1) {
+  return window['go']['main']['App']['SaveSession'](arg1);
 }
 
-export function SetDirtyCount(arg1) {
-  return window['go']['main']['App']['SetDirtyCount'](arg1);
+export function SaveSettings(arg1) {
+  return window['go']['main']['App']['SaveSettings'](arg1);
 }
 
 export function SetEditModeMenu(arg1) {

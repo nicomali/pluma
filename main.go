@@ -93,7 +93,7 @@ func buildMenu(app *App) *menu.Menu {
 	file.AddText("Guardar como…    Ctrl+Shift+S", nil, emit("menu:saveas"))
 	file.AddSeparator()
 	file.AddText("Cerrar pestaña    Ctrl+W", nil, emit("menu:close"))
-	file.AddText("Salir", nil, func(*menu.CallbackData) { runtime.Quit(app.ctx) })
+	file.AddText("Salir", nil, func(*menu.CallbackData) { app.beforeClose(app.ctx) }) // guarda la sesión antes de salir
 
 	view := m.AddSubmenu("Ver")
 	view.AddText("Barra lateral    Ctrl+B", nil, emit("menu:sidebar"))

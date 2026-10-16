@@ -13,6 +13,13 @@
   }
 
   const isOpen = (path: string) => ws.docs.some((d) => d.path.toLowerCase() === path.toLowerCase());
+
+  // El índice acompaña la lectura: si el título actual queda fuera de vista, se desplaza.
+  let nav = $state<HTMLElement>();
+  $effect(() => {
+    ws.currentHeading;
+    nav?.querySelector('.current')?.scrollIntoView({ block: 'nearest' });
+  });
 </script>
 
 <aside class="sidebar" class:open={ws.sidebarOpen} aria-hidden={!ws.sidebarOpen}>
@@ -29,10 +36,10 @@
       Pluma
     </div>
 
-    <section>
+    <section class="contents">
       <h2>Contenido</h2>
       {#if headings.length}
-        <nav>
+        <nav class="scroll" bind:this={nav}>
           {#each headings as h}
             <button
               class="item heading"
@@ -49,27 +56,29 @@
       {/if}
     </section>
 
-    <section>
+    <section class="recents">
       <h2>
         Recientes
         {#if ws.recent.length}
           <button class="clear" tabindex={ws.sidebarOpen ? 0 : -1} onclick={() => ws.clearRecent()}>Limpiar</button>
         {/if}
       </h2>
-      {#each ws.recent as path (path)}
-        <button
-          class="item recent"
-          class:is-open={isOpen(path)}
-          title={path}
-          tabindex={ws.sidebarOpen ? 0 : -1}
-          onclick={() => ws.openPaths([path])}
-        >
-          <span class="name">{fileName(path)}</span>
-          <span class="dir">{parentDir(path)}</span>
-        </button>
-      {:else}
-        <p class="empty">Nada todavía</p>
-      {/each}
+      <div class="scroll">
+        {#each ws.recent as path (path)}
+          <button
+            class="item recent"
+            class:is-open={isOpen(path)}
+            title={path}
+            tabindex={ws.sidebarOpen ? 0 : -1}
+            onclick={() => ws.openPaths([path])}
+          >
+            <span class="name">{fileName(path)}</span>
+            <span class="dir">{parentDir(path)}</span>
+          </button>
+        {:else}
+          <p class="empty">Nada todavía</p>
+        {/each}
+      </div>
     </section>
   </div>
 </aside>
@@ -85,14 +94,37 @@
   }
   .sidebar.open { width: 15rem; border-right-color: var(--line); }
 
-  /* Ancho fijo adentro: al colapsar se recorta en vez de reacomodar el texto */
+  /*
+   * Ancho fijo adentro: al colapsar se recorta en vez de reacomodar el texto.
+   * Columna: marca arriba, "Contenido" ocupa el resto y scrollea solo su lista,
+   * "Recientes" queda fija abajo.
+   */
   .inner {
     width: 15rem;
     height: 100%;
-    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
     box-sizing: border-box;
-    padding: 0.75rem 0.5rem 1.5rem;
+    padding: 0.75rem 0.5rem 0;
     font-size: 0.8125rem;
+  }
+
+  section { display: flex; flex-direction: column; min-height: 0; }
+  .contents { flex: 1; }
+  .recents {
+    flex-shrink: 0;
+    max-height: 45%;
+    margin: 0.5rem -0.5rem 0;
+    padding: 0.75rem 0.5rem;
+    border-top: 1px solid var(--line);
+  }
+
+  .scroll {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--line) transparent;
   }
 
   .brand {
@@ -106,9 +138,8 @@
   }
   .brand svg { width: 1rem; height: 1rem; }
 
-  section + section { margin-top: 1.25rem; }
-
   h2 {
+    flex-shrink: 0;
     display: flex;
     align-items: center;
     justify-content: space-between;

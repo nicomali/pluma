@@ -3,8 +3,8 @@
   import Editor from './Editor.svelte';
   import Sidebar from './Sidebar.svelte';
   import Tabs from './Tabs.svelte';
-  import { ws, fileName } from './lib/workspace.svelte';
-  import { GetStartupFiles, SetDirtyCount } from '../wailsjs/go/main/App';
+  import { ws, fileName, flushEditing } from './lib/workspace.svelte';
+  import { GetStartupFiles, QuitApp } from '../wailsjs/go/main/App';
   import { WindowSetTitle, EventsOn, OnFileDrop, OnFileDropOff } from '../wailsjs/runtime/runtime';
 
   // Título de la ventana: "• notas.md — Pluma" cuando la pestaña activa tiene cambios.
@@ -13,9 +13,14 @@
     WindowSetTitle(`${doc?.dirty ? '• ' : ''}${fileName(doc?.path ?? '')} — Pluma`);
   });
 
-  // Go usa este número para preguntar antes de cerrar la ventana.
+  // Sesión: se guarda un segundo después de cada cambio (pestañas, contenido, pestaña
+  // activa). Así, aunque la app se cierre de golpe, se recupera casi todo al reabrir.
+  let sessionTimer = 0;
   $effect(() => {
-    SetDirtyCount(ws.dirtyCount);
+    if (!ws.restored) return; // nunca pisar la sesión anterior antes de restaurarla
+    ws.sessionSnapshot(); // lectura que registra las dependencias del efecto
+    clearTimeout(sessionTimer);
+    sessionTimer = setTimeout(() => ws.saveSession(), 1000);
   });
 
   // Escala de fuente: toda la UI está en rem, así que alcanza con cambiar la raíz.
@@ -35,6 +40,14 @@
     GetStartupFiles().then((files) => ws.init(files ?? []));
 
     const offs = [
+      // Cierre de la ventana (o Archivo → Salir): confirmar el bloque en edición,
+      // guardar la sesión y recién ahí salir. Al reabrir se recupera todo.
+      EventsOn('app:before-close', async () => {
+        await flushEditing();
+        clearTimeout(sessionTimer);
+        await ws.saveSession();
+        QuitApp();
+      }),
       // Otra instancia (doble clic en un .md con Pluma ya abierta) manda sus archivos acá.
       EventsOn('open-files', (files: string[]) => ws.openPaths(files)),
       EventsOn('menu:new', () => ws.newDoc()),

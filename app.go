@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/wailsapp/wails/v2/pkg/menu"
 	"github.com/wailsapp/wails/v2/pkg/options"
@@ -16,7 +17,7 @@ import (
 // App es el struct cuyos métodos públicos Wails expone al frontend.
 type App struct {
 	ctx        context.Context
-	dirtyCount atomic.Int32 // documentos con cambios sin guardar (lo informa el frontend)
+	quitting   atomic.Bool // la sesión ya se guardó: el próximo cierre no se intercepta
 	settingsMu sync.Mutex
 
 	editModeItems map[string]*menu.MenuItem // radios "Edición Markdown/visual" del menú Ver
@@ -78,25 +79,25 @@ func (a *App) SetEditModeMenu(mode string) {
 	runtime.MenuUpdateApplicationMenu(a.ctx)
 }
 
-// SetDirtyCount lo llama el frontend cada vez que cambia la cantidad de documentos sin guardar.
-func (a *App) SetDirtyCount(n int) { a.dirtyCount.Store(int32(n)) }
-
-// beforeClose evita cerrar la ventana si hay documentos sin guardar y el usuario no confirma.
+// beforeClose no pregunta por cambios sin guardar: nada se pierde, porque la sesión
+// (pestañas y cambios pendientes) se recupera al volver a abrir. Le pide al frontend
+// que confirme el bloque en edición y guarde la sesión; el frontend llama a QuitApp.
+// Si no responde (por ejemplo, porque se colgó), se sale igual a los pocos segundos.
 func (a *App) beforeClose(ctx context.Context) (prevent bool) {
-	n := a.dirtyCount.Load()
-	if n == 0 {
+	if a.quitting.Load() {
 		return false
 	}
-	msg := "Hay un documento con cambios sin guardar. ¿Salir igual?"
-	if n > 1 {
-		msg = fmt.Sprintf("Hay %d documentos con cambios sin guardar. ¿Salir igual?", n)
+	runtime.EventsEmit(ctx, "app:before-close")
+	time.AfterFunc(3*time.Second, a.QuitApp)
+	return true
+}
+
+// QuitApp cierra la app sin volver a interceptar el cierre.
+func (a *App) QuitApp() {
+	if a.quitting.Swap(true) {
+		return // ya se está cerrando
 	}
-	res, err := runtime.MessageDialog(ctx, runtime.MessageDialogOptions{
-		Type:    runtime.QuestionDialog,
-		Title:   "Cambios sin guardar",
-		Message: msg,
-	})
-	return err != nil || res != "Yes"
+	runtime.Quit(a.ctx)
 }
 
 // integrateWithWindows registra Pluma en el shell y abre Configuración para
