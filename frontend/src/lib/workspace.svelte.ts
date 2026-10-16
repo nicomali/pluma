@@ -3,9 +3,9 @@
 // compartan la misma instancia sin pasarse props de un lado a otro.
 
 import { tick } from 'svelte';
-import { toBlocks, serialize, newBlockId, BLANK_GAP, type BlockData } from './markdown';
+import { toBlocks, serialize, newBlockId, lineStarts, lineCount, BLANK_GAP, type BlockData } from './markdown';
 import {
-  ReadFile, SaveFile, OpenFilesDialog, SaveFileDialog, ConfirmDiscard, LoadSettings, SaveSettings, SetEditModeMenu,
+  ReadFile, SaveFile, OpenFilesDialog, SaveFileDialog, ConfirmDiscard, LoadSettings, SaveSettings, SetMenuRadio,
   LoadSession, SaveSession,
 } from '../../wailsjs/go/main/App';
 import { main } from '../../wailsjs/go/models';
@@ -13,12 +13,23 @@ import { main } from '../../wailsjs/go/models';
 /** Cómo se edita un bloque: el Markdown crudo o visualmente (con formato aplicado). */
 export type EditMode = 'raw' | 'visual';
 
+/** Números de línea en el margen: ocultos, absolutos o relativos al cursor (estilo vim). */
+export type LineNumbers = 'off' | 'absolute' | 'relative';
+
+/**
+ * Pedido de abrir un bloque en edición (navegación con flechas, "Ir a línea").
+ * `at`: dónde poner el cursor, o el número de línea dentro del bloque (0 = primera).
+ * `n` cambia en cada pedido para que se reaccione aunque se repita el mismo bloque.
+ */
+export type EditRequest = { id: number; at: 'start' | 'end' | number; n: number };
+
 export type Doc = {
   id: number;
   path: string; // "" = sin guardar todavía
   blocks: BlockData[];
   dirty: boolean;
   focusId: number; // bloque que debe montarse ya en modo edición (bloques nuevos)
+  editRequest: EditRequest | null;
 };
 
 /**
@@ -33,6 +44,9 @@ const MAX_RECENT = 10;
 const ZOOM_STEPS = [0.75, 0.85, 0.9, 1, 1.1, 1.25, 1.4, 1.6, 1.8, 2];
 
 let nextDocId = 0;
+let nextRequest = 0;
+
+const newDocFields = { dirty: false, focusId: -1, editRequest: null };
 
 export const fileName = (path: string) => (path ? path.split(/[\\/]/).pop()! : 'Sin título');
 
@@ -60,6 +74,9 @@ class Workspace {
   zoom = $state(1);
   sidebarOpen = $state(true);
   editMode = $state<EditMode>('raw');
+  lineNumbers = $state<LineNumbers>('off');
+  /** Línea del cursor en el archivo activo (base de los números relativos y de "Ir a línea"). */
+  cursorLine = $state(1);
   error = $state('');
   /** blockId del título visible en el editor activo (scroll-spy para la barra lateral). */
   currentHeading = $state(-1);
@@ -78,6 +95,7 @@ class Workspace {
     this.zoom = s.zoom || 1;
     this.sidebarOpen = s.sidebarOpen;
     this.editMode = s.editMode === 'visual' ? 'visual' : 'raw';
+    this.lineNumbers = (['absolute', 'relative'] as const).find((v) => v === s.lineNumbers) ?? 'off';
     await this.restoreSession();
     if (startupFiles.length) await this.openPaths(startupFiles); // se suman a las restauradas
     if (this.docs.length === 0) this.newDoc();
@@ -120,7 +138,7 @@ class Workspace {
           continue; // el archivo se borró o se movió desde la última vez
         }
       }
-      this.docs.push({ id: nextDocId++, path: tab.path ?? '', blocks, dirty: !!tab.dirty, focusId: -1 });
+      this.docs.push({ ...newDocFields, id: nextDocId++, path: tab.path ?? '', blocks, dirty: !!tab.dirty });
     }
     const active = this.docs[session.active] ?? this.docs[0];
     if (active) this.activeId = active.id;
@@ -133,6 +151,7 @@ class Workspace {
         zoom: this.zoom,
         sidebarOpen: this.sidebarOpen,
         editMode: this.editMode,
+        lineNumbers: this.lineNumbers,
       }),
     ).catch(() => {}); // perder una preferencia no justifica interrumpir al usuario
   }
@@ -140,7 +159,7 @@ class Workspace {
   // --- Documentos y pestañas ---
 
   newDoc() {
-    const doc: Doc = { id: nextDocId++, path: '', blocks: [], dirty: false, focusId: -1 };
+    const doc: Doc = { ...newDocFields, id: nextDocId++, path: '', blocks: [] };
     this.docs.push(doc);
     this.activeId = doc.id;
   }
@@ -171,7 +190,7 @@ class Workspace {
           target.path = path;
           target.blocks = blocks;
         } else {
-          const doc: Doc = { id: nextDocId++, path, blocks, dirty: false, focusId: -1 };
+          const doc: Doc = { ...newDocFields, id: nextDocId++, path, blocks };
           this.docs.push(doc);
           this.activeId = doc.id;
         }
@@ -282,8 +301,47 @@ class Workspace {
   setEditMode(mode: EditMode) {
     if (mode === this.editMode) return;
     this.editMode = mode;
-    SetEditModeMenu(mode);
+    SetMenuRadio('editMode', mode);
     this.persist();
+  }
+
+  setLineNumbers(mode: LineNumbers) {
+    if (mode === this.lineNumbers) return;
+    this.lineNumbers = mode;
+    SetMenuRadio('lineNumbers', mode);
+    this.persist();
+  }
+
+  /** Ctrl+L: ocultos → absolutos → relativos → ocultos. */
+  cycleLineNumbers(): LineNumbers {
+    const order: LineNumbers[] = ['off', 'absolute', 'relative'];
+    this.setLineNumbers(order[(order.indexOf(this.lineNumbers) + 1) % order.length]);
+    return this.lineNumbers;
+  }
+
+  // --- Navegación ---
+
+  /** Pide abrir un bloque en edición con el cursor en `at`. */
+  requestEdit(doc: Doc, blockId: number, at: EditRequest['at']) {
+    doc.editRequest = { id: blockId, at, n: ++nextRequest };
+  }
+
+  /**
+   * "Ir a línea" estilo vim: "42" es absoluta, "+5" / "-3" relativas a la línea del
+   * cursor. Abre en edición el bloque que contiene esa línea. false si no se entiende.
+   */
+  goToLine(input: string): boolean {
+    const doc = this.active;
+    const m = /^\s*([+-])?\s*(\d+)\s*$/.exec(input);
+    if (!doc || !doc.blocks.length || !m) return false;
+    const n = Number(m[2]);
+    const target = m[1] === '+' ? this.cursorLine + n : m[1] === '-' ? this.cursorLine - n : n;
+    const starts = lineStarts(doc.blocks);
+    const i = Math.max(0, starts.findLastIndex((s) => s <= target));
+    const block = doc.blocks[i];
+    const offset = Math.max(0, Math.min(target - starts[i], lineCount(block.text) - 1));
+    this.requestEdit(doc, block.id, offset);
+    return true;
   }
 
   /** Sube o baja un escalón de escala de fuente (75% … 200%). */

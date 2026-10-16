@@ -1,11 +1,11 @@
 <script lang="ts">
-  import { onMount, tick } from 'svelte';
+  import { onMount, tick, untrack } from 'svelte';
   import EditPanel from './EditPanel.svelte';
   import { renderMarkdown } from './lib/render';
   import { htmlToMarkdown } from './lib/htmlToMarkdown';
   import { isVisualEditable, blockKind, detectBullet, detectEmphasis, toggleTask } from './lib/markdown';
   import { applyRaw, applyVisual, activeVisual, type ActiveFormats, type FormatAction } from './lib/format';
-  import { ws } from './lib/workspace.svelte';
+  import { ws, type EditRequest } from './lib/workspace.svelte';
   import { BrowserOpenURL } from '../wailsjs/runtime/runtime';
 
   interface Props {
@@ -15,11 +15,19 @@
     startInEditMode?: boolean;
     /** Carpeta del documento, para resolver imágenes relativas ("" si no está guardado). */
     baseDir?: string;
+    /** Pedido de abrir este bloque en edición (flechas desde el vecino, "Ir a línea"). */
+    request?: EditRequest | null;
     /** Se llama al terminar de editar con el Markdown resultante. */
     oncommit: (text: string) => void;
+    /** Flecha en el borde del bloque: pasar al vecino. Devuelve false si no hay vecino. */
+    onnavigate?: (dir: 1 | -1) => boolean;
+    /** Línea del cursor dentro del bloque (0 = primera), para los números relativos. */
+    oncaretline?: (line: number) => void;
   }
 
-  let { text, startInEditMode = false, baseDir = '', oncommit }: Props = $props();
+  let {
+    text, startInEditMode = false, request = null, baseDir = '', oncommit, onnavigate, oncaretline,
+  }: Props = $props();
 
   type Mode = 'visual' | 'raw';
 
@@ -77,15 +85,28 @@
     if (startInEditMode) startEdit();
   });
 
+  // Pedidos de edición: el bloque se abre (o mueve el cursor) donde se indica.
+  $effect(() => {
+    const r = request;
+    if (!r) return;
+    untrack(() => {
+      if (typeof r.at === 'number') wrapper.scrollIntoView({ block: 'center' }); // "Ir a línea"
+      if (editing === 'raw') placeRawCaret(r.at);
+      else if (!editing) startEdit(undefined, r.at);
+    });
+  });
+
   // ---------------------------------------------------------------- Entrar / salir
 
-  function startEdit(point?: { x: number; y: number }) {
+  type At = EditRequest['at'];
+
+  function startEdit(point?: { x: number; y: number }, at: At = 'end') {
     if (editing) return;
     const mode: Mode = ws.editMode === 'visual' && isVisualEditable(text) ? 'visual' : 'raw';
-    enter(mode, text, point);
+    enter(mode, text, point, at);
   }
 
-  async function enter(mode: Mode, md: string, point?: { x: number; y: number }) {
+  async function enter(mode: Mode, md: string, point?: { x: number; y: number }, at: At = 'end') {
     ready = false;
     // El contenido se carga ANTES de mostrar el editor: así nunca existe un editor
     // "vacío" que, si se confirmara, borraría el bloque.
@@ -96,26 +117,44 @@
     if (mode === 'raw') {
       autosize();
       textarea.focus();
-      textarea.setSelectionRange(md.length, md.length);
+      placeRawCaret(at);
     } else {
       visual.innerHTML = renderMarkdown(md, baseDir);
       initialHTML = visual.innerHTML;
       document.execCommand('defaultParagraphSeparator', false, 'p');
       visual.focus();
-      placeCaret(point);
+      placeCaret(point, at === 'start');
       active = activeVisual(visual);
+      oncaretline?.(0);
     }
     ready = true;
   }
 
+  /** Cursor del textarea al inicio, al final o al comienzo de la línea n del bloque. */
+  function placeRawCaret(at: At) {
+    const v = textarea.value;
+    let pos = v.length;
+    if (at === 'start') pos = 0;
+    else if (typeof at === 'number') {
+      pos = 0;
+      for (let i = 0; i < at && pos !== -1; i++) pos = v.indexOf('\n', pos) + 1 || v.length;
+    }
+    textarea.setSelectionRange(pos, pos);
+    reportRawLine();
+  }
+
+  function reportRawLine() {
+    oncaretline?.(textarea.value.slice(0, textarea.selectionStart).split('\n').length - 1);
+  }
+
   /** Cursor donde se hizo clic: el editor visual tiene el mismo HTML en el mismo lugar. */
-  function placeCaret(point?: { x: number; y: number }) {
+  function placeCaret(point?: { x: number; y: number }, atStart = false) {
     const sel = getSelection()!;
     let range = point ? document.caretRangeFromPoint(point.x, point.y) : null;
     if (!range || !visual.contains(range.startContainer)) {
       range = document.createRange();
       range.selectNodeContents(visual);
-      range.collapse(false); // al final
+      range.collapse(atStart); // al inicio o al final
     }
     sel.removeAllRanges();
     sel.addRange(range);
@@ -183,8 +222,98 @@
     }
   }
 
+  /** Pasar al bloque vecino (confirmando este) si existe. */
+  function navigate(dir: 1 | -1) {
+    if (onnavigate?.(dir)) finish();
+  }
+
+  /**
+   * Rectángulo de la línea del cursor. Entre elementos (p. ej. al inicio del bloque,
+   * antes de un <h2>) el navegador no da posición: se usa la del nodo vecino.
+   */
+  function caretRect(range: Range): DOMRect | null {
+    const direct = range.getClientRects()[0];
+    if (direct) return direct;
+    const { startContainer: c, startOffset: o } = range;
+    const after = c.nodeType === Node.ELEMENT_NODE ? c.childNodes[o] : null;
+    const neighbor = after ?? (c.nodeType === Node.ELEMENT_NODE ? c.childNodes[o - 1] : c);
+    if (!neighbor) return null;
+    const r = document.createRange();
+    r.selectNodeContents(neighbor);
+    const rects = r.getClientRects();
+    return (after ? rects[0] : rects[rects.length - 1]) ?? null;
+  }
+
+  /** Rectángulos de cada línea de texto y de cada imagen del editor visual. */
+  function contentLineRects(): DOMRect[] {
+    const rects: DOMRect[] = [];
+    const walker = document.createTreeWalker(visual, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT);
+    const r = document.createRange();
+    for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+      if (n.nodeType === Node.TEXT_NODE) {
+        if (!n.textContent?.trim()) continue;
+        r.selectNodeContents(n);
+        rects.push(...r.getClientRects());
+      } else if ((n as Element).tagName === 'IMG') {
+        rects.push((n as Element).getBoundingClientRect());
+      }
+    }
+    return rects.filter((x) => x.height > 0);
+  }
+
+  /** ¿El cursor del editor visual está en la primera (dir -1) o última (dir 1) línea? */
+  function visualCaretOnEdge(dir: 1 | -1): boolean {
+    const sel = getSelection();
+    if (!sel?.rangeCount || !sel.isCollapsed) return false;
+    const range = sel.getRangeAt(0);
+    const rect = caretRect(range);
+    if (!rect) {
+      // Sin ninguna referencia: solo cuenta como borde si está literalmente en un extremo.
+      const len = range.startContainer.childNodes.length || (range.startContainer.textContent ?? '').length;
+      return dir < 0 ? range.startOffset === 0 : range.startOffset >= len;
+    }
+    // Primera y última línea reales: solo texto e imágenes. Las cajas de los elementos
+    // (citas, párrafos con margen) son más altas que sus líneas y engañarían la medida.
+    const lines = contentLineRects();
+    if (!lines.length) return true; // bloque vacío
+    const top = Math.min(...lines.map((r) => r.top));
+    const bottom = Math.max(...lines.map((r) => r.bottom));
+    const tolerance = (parseFloat(getComputedStyle(visual).lineHeight) || 24) * 0.6;
+    return dir < 0 ? rect.top - top < tolerance : bottom - rect.bottom < tolerance;
+  }
+
+  /**
+   * Flechas ↑/↓ en el borde del bloque → bloque vecino, en el mismo modo de edición.
+   * Markdown: en la primera/última línea lógica. Si la línea está cortada por el ancho,
+   * la primera pulsación deja que el navegador lleve el cursor al extremo y recién ahí salta.
+   */
+  function onArrow(e: KeyboardEvent, dir: 1 | -1) {
+    if (editing === 'visual') {
+      if (visualCaretOnEdge(dir)) {
+        e.preventDefault();
+        navigate(dir);
+      }
+      return;
+    }
+    const { selectionStart: pos, selectionEnd: end, value: v } = textarea;
+    if (pos !== end) return;
+    const onEdgeLine = dir < 0 ? v.lastIndexOf('\n', pos - 1) === -1 : v.indexOf('\n', pos) === -1;
+    if (!onEdgeLine) return;
+    const edge = () => (dir < 0 ? 0 : textarea.value.length);
+    if (pos === edge()) {
+      e.preventDefault();
+      navigate(dir);
+    } else {
+      setTimeout(() => editing === 'raw' && textarea.selectionStart === edge() && navigate(dir));
+    }
+  }
+
   function onKeydown(e: KeyboardEvent) {
     const mod = e.ctrlKey || e.metaKey;
+    if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && !mod && !e.shiftKey && !e.altKey) {
+      onArrow(e, e.key === 'ArrowUp' ? -1 : 1);
+      return;
+    }
     if (e.key === 'Escape') {
       e.preventDefault();
       cancel();
@@ -258,8 +387,10 @@
     <textarea
       bind:this={textarea}
       bind:value={draft}
-      oninput={autosize}
+      oninput={() => { autosize(); reportRawLine(); }}
       onkeydown={onKeydown}
+      onkeyup={reportRawLine}
+      onclick={reportRawLine}
       rows="1"
       spellcheck="false"
     ></textarea>

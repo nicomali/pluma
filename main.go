@@ -48,7 +48,7 @@ func main() {
 		},
 		// Una sola ventana: los .md que se abran desde el Explorador llegan como pestañas.
 		SingleInstanceLock: &options.SingleInstanceLock{
-			UniqueId:               "pluma-markdown-7c1e2a4b",
+			UniqueId:               instanceID,
 			OnSecondInstanceLaunch: app.onSecondInstance,
 		},
 		// El zoom nativo del WebView se desactiva: la escala de fuente la maneja Pluma.
@@ -98,14 +98,24 @@ func buildMenu(app *App) *menu.Menu {
 	view := m.AddSubmenu("Ver")
 	view.AddText("Barra lateral    Ctrl+B", nil, emit("menu:sidebar"))
 	view.AddSeparator()
-	mode := app.LoadSettings().EditMode
-	setMode := func(value string) menu.Callback {
-		return func(*menu.CallbackData) { runtime.EventsEmit(app.ctx, "menu:editmode", value) }
+	settings := app.LoadSettings()
+	radio := func(event, value, current, label string) *menu.MenuItem {
+		return view.AddRadio(label, value == current, nil, func(*menu.CallbackData) {
+			runtime.EventsEmit(app.ctx, event, value)
+		})
 	}
-	app.editModeItems = map[string]*menu.MenuItem{
-		"raw":    view.AddRadio("Edición Markdown", mode == "raw", nil, setMode("raw")),
-		"visual": view.AddRadio("Edición visual", mode == "visual", nil, setMode("visual")),
+	app.radios = map[string]map[string]*menu.MenuItem{}
+	app.radios["editMode"] = map[string]*menu.MenuItem{
+		"raw":    radio("menu:editmode", "raw", settings.EditMode, "Edición Markdown"),
+		"visual": radio("menu:editmode", "visual", settings.EditMode, "Edición visual"),
 	}
+	view.AddSeparator()
+	app.radios["lineNumbers"] = map[string]*menu.MenuItem{
+		"off":      radio("menu:linenumbers", "off", settings.LineNumbers, "Sin números de línea    Ctrl+L"),
+		"absolute": radio("menu:linenumbers", "absolute", settings.LineNumbers, "Números absolutos"),
+		"relative": radio("menu:linenumbers", "relative", settings.LineNumbers, "Números relativos"),
+	}
+	view.AddText("Ir a línea…    Ctrl+G", nil, emit("menu:gotoline"))
 	view.AddSeparator()
 	view.AddText("Aumentar fuente    Ctrl++", nil, emit("menu:zoomin"))
 	view.AddText("Reducir fuente    Ctrl+-", nil, emit("menu:zoomout"))
@@ -117,6 +127,8 @@ func buildMenu(app *App) *menu.Menu {
 
 	help := m.AddSubmenu("Ayuda")
 	help.AddText("Documento de ejemplo", nil, func(*menu.CallbackData) { app.openExample() })
+	help.AddSeparator()
+	help.AddText("Acerca de Pluma", nil, func(*menu.CallbackData) { app.showAbout() })
 
 	return m
 }

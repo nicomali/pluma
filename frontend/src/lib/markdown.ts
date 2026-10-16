@@ -127,3 +127,20 @@ export function toggleTask(text: string, index: number): string {
     ++i === index ? `${pre}[${mark === ' ' ? 'x' : ' '}]` : match,
   );
 }
+
+/**
+ * Línea (1 = primera) en la que empieza cada bloque dentro del archivo guardado.
+ * Cuenta las líneas del texto y los saltos del separador, igual que serialize().
+ */
+export function lineStarts(blocks: BlockData[]): number[] {
+  const starts: number[] = [];
+  let line = 1;
+  for (const b of blocks) {
+    starts.push(line);
+    line += b.text.split('\n').length - 1 + Math.max(1, (b.gap || BLANK_GAP).length);
+  }
+  return starts;
+}
+
+/** Cantidad de líneas que ocupa el texto de un bloque. */
+export const lineCount = (text: string) => text.split('\n').length;

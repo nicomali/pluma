@@ -5,6 +5,7 @@ export namespace main {
 	    zoom: number;
 	    sidebarOpen: boolean;
 	    editMode: string;
+	    lineNumbers: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new Settings(source);
@@ -16,6 +17,7 @@ export namespace main {
 	        this.zoom = source["zoom"];
 	        this.sidebarOpen = source["sidebarOpen"];
 	        this.editMode = source["editMode"];
+	        this.lineNumbers = source["lineNumbers"];
 	    }
 	}
 

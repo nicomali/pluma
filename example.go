@@ -24,7 +24,7 @@ func extractExample() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	dest := filepath.Join(cfg, "Pluma", "ejemplo")
+	dest := filepath.Join(cfg, configDirName, "ejemplo")
 
 	err = fs.WalkDir(exampleFS, exampleRoot, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {

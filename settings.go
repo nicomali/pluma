@@ -13,10 +13,11 @@ type Settings struct {
 	Zoom        float64  `json:"zoom"`        // escala de fuente (1 = 100%)
 	SidebarOpen bool     `json:"sidebarOpen"` // barra lateral visible
 	EditMode    string   `json:"editMode"`    // "raw" (Markdown) o "visual"
+	LineNumbers string   `json:"lineNumbers"` // "off", "absolute" o "relative"
 }
 
 func defaultSettings() Settings {
-	return Settings{Recent: []string{}, Zoom: 1, SidebarOpen: true, EditMode: "raw"}
+	return Settings{Recent: []string{}, Zoom: 1, SidebarOpen: true, EditMode: "raw", LineNumbers: "off"}
 }
 
 func settingsPath() (string, error) {
@@ -24,7 +25,7 @@ func settingsPath() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(dir, "Pluma", "settings.json"), nil
+	return filepath.Join(dir, configDirName, "settings.json"), nil
 }
 
 // LoadSettings devuelve las preferencias guardadas (o las default si no hay archivo
@@ -58,6 +59,9 @@ func (a *App) LoadSettings() Settings {
 	}
 	if s.EditMode != "visual" {
 		s.EditMode = "raw"
+	}
+	if s.LineNumbers != "absolute" && s.LineNumbers != "relative" {
+		s.LineNumbers = "off"
 	}
 	return s
 }

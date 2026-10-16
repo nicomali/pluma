@@ -24,4 +24,4 @@ export function SaveSession(arg1:string):Promise<void>;
 
 export function SaveSettings(arg1:main.Settings):Promise<void>;
 
-export function SetEditModeMenu(arg1:string):Promise<void>;
+export function SetMenuRadio(arg1:string,arg2:string):Promise<void>;

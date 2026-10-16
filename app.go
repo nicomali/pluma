@@ -20,7 +20,7 @@ type App struct {
 	quitting   atomic.Bool // la sesión ya se guardó: el próximo cierre no se intercepta
 	settingsMu sync.Mutex
 
-	editModeItems map[string]*menu.MenuItem // radios "Edición Markdown/visual" del menú Ver
+	radios map[string]map[string]*menu.MenuItem // grupos de opciones del menú Ver: grupo → valor → ítem
 }
 
 func NewApp() *App { return &App{} }
@@ -71,10 +71,11 @@ func (a *App) ConfirmDiscard(name string) bool {
 	return err == nil && res == "Yes"
 }
 
-// SetEditModeMenu sincroniza la marca del menú Ver cuando el modo se cambia desde el panel.
-func (a *App) SetEditModeMenu(mode string) {
-	for m, item := range a.editModeItems {
-		item.Checked = m == mode
+// SetMenuRadio sincroniza la marca de un grupo del menú Ver ("editMode", "lineNumbers")
+// cuando la opción se cambia desde la interfaz o con un atajo.
+func (a *App) SetMenuRadio(group, value string) {
+	for v, item := range a.radios[group] {
+		item.Checked = v == value
 	}
 	runtime.MenuUpdateApplicationMenu(a.ctx)
 }

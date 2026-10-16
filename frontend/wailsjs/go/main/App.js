@@ -46,6 +46,6 @@ export function SaveSettings(arg1) {
   return window['go']['main']['App']['SaveSettings'](arg1);
 }
 
-export function SetEditModeMenu(arg1) {
-  return window['go']['main']['App']['SetEditModeMenu'](arg1);
+export function SetMenuRadio(arg1, arg2) {
+  return window['go']['main']['App']['SetMenuRadio'](arg1, arg2);
 }

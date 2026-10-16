@@ -14,10 +14,10 @@
     !define INFO_PRODUCTNAME "Pluma"
 !endif
 !ifndef INFO_PRODUCTVERSION
-    !define INFO_PRODUCTVERSION "0.1.0"
+    !define INFO_PRODUCTVERSION "0.2.0"
 !endif
 !ifndef INFO_COPYRIGHT
-    !define INFO_COPYRIGHT "© 2026 nico_"
+    !define INFO_COPYRIGHT "© 2026 Nicolas Malinovsky nEm · MIT"
 !endif
 !ifndef PRODUCT_EXECUTABLE
     !define PRODUCT_EXECUTABLE "${INFO_PROJECTNAME}.exe"

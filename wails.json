@@ -7,14 +7,14 @@
   "frontend:dev:watcher": "npm run dev",
   "frontend:dev:serverUrl": "auto",
   "author": {
-    "name": "nico_",
+    "name": "Nicolas Malinovsky nEm",
     "email": "yonicomali@gmail.com"
   },
   "info": {
     "companyName": "Pluma",
     "productName": "Pluma",
-    "productVersion": "0.1.0",
-    "copyright": "© 2026 nico_",
+    "productVersion": "0.2.0",
+    "copyright": "© 2026 Nicolas Malinovsky nEm · MIT",
     "comments": "Editor de Markdown minimalista"
   }
 }

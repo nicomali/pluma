@@ -23,6 +23,9 @@
 | Cambiar de pestaña | <kbd>Ctrl</kbd> + <kbd>Tab</kbd> |
 | Barra lateral (sin editar un bloque) | <kbd>Ctrl</kbd> + <kbd>B</kbd> |
 | Negrita / cursiva / link (editando) | <kbd>Ctrl</kbd> + <kbd>B</kbd> / <kbd>I</kbd> / <kbd>K</kbd> |
+| Pasar al bloque anterior / siguiente (editando) | <kbd>↑</kbd> / <kbd>↓</kbd> en la primera / última línea |
+| Números de línea: ocultos → absolutos → relativos | <kbd>Ctrl</kbd> + <kbd>L</kbd> |
+| Ir a línea (`42` absoluta, `+5` / `-3` relativas) | <kbd>Ctrl</kbd> + <kbd>G</kbd> |
 | Escalar la fuente | <kbd>Ctrl</kbd> + <kbd>+</kbd> / <kbd>−</kbd> / <kbd>0</kbd>, o <kbd>Ctrl</kbd> + rueda |
 | Abrir un link | <kbd>Ctrl</kbd> + clic |
 

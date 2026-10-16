@@ -15,7 +15,7 @@ func sessionPath() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(dir, "Pluma", "session.json"), nil
+	return filepath.Join(dir, configDirName, "session.json"), nil
 }
 
 // LoadSession devuelve la última sesión guardada, o "" si no hay.
